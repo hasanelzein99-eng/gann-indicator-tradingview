@@ -1,0 +1,115 @@
+//@version=5
+indicator("Gann Toolkit • Angles / Fan / Star", overlay = true, max_lines_count = 100, max_labels_count = 100)
+
+// ─── Inputs ───────────────────────────────────────────────────────────────────
+groupAnchor = "Anchor / نقطة الارتكاز"
+mode = input.string("تلقائي", "طريقة الاختيار", options = ["تلقائي", "يدوي"], group = groupAnchor)
+trendMode = input.string("EMA", "الاتجاه التلقائي", options = ["EMA", "آخر Pivot"], group = groupAnchor)
+pivotLen = input.int(5, "قوة القمة/القاع", minval = 1, group = groupAnchor)
+emaLen = input.int(50, "طول EMA", minval = 2, group = groupAnchor)
+manualTime = input.time(timestamp(2024, 1, 1, 0, 0), "وقت النقطة اليدوية", group = groupAnchor)
+manualPrice = input.float(0.0, "سعر النقطة اليدوي�� (0 = إغلاق الشمعة)", minval = 0, group = groupAnchor)
+manualType = input.string("قاع", "نوع النقطة اليدوية", options = ["قمة", "قاع"], group = groupAnchor)
+
+// This is the price distance represented by one Gann unit per bar.
+// Set it manually for a true instrument scale, or use ATR for normalization.
+groupScale = "Scale / مقياس جان"
+scaleMode = input.string("ATR", "مقياس السعر", options = ["ATR", "يدوي"], group = groupScale)
+atrLen = input.int(14, "طول ATR", minval = 1, group = groupScale)
+manualUnit = input.float(1.0, "النقاط لكل شمعة", minval = 0.0000001, group = groupScale)
+barsForward = input.int(120, "عدد الشموع إلى الأمام", minval = 10, maxval = 500, group = groupScale)
+
+showAngles = input.bool(true, "زوايا جان", group = "Display / العرض")
+showFan = input.bool(true, "مروحة جان", group = "Display / العرض")
+showStar = input.bool(true, "نجمة جان", group = "Display / العرض")
+showLabels = input.bool(true, "عرض النسب", group = "Display / العرض")
+lineWidth = input.int(2, "سماكة الخطوط", minval = 1, maxval = 4, group = "Display / العرض")
+
+// ─── Pivot tracking ────────────────────────────────────────────────────────────
+ph = ta.pivothigh(high, pivotLen, pivotLen)
+pl = ta.pivotlow(low, pivotLen, pivotLen)
+var int lastHighBar = na
+var float lastHigh = na
+var int lastLowBar = na
+var float lastLow = na
+if not na(ph)
+    lastHighBar := bar_index - pivotLen
+    lastHigh := ph
+if not na(pl)
+    lastLowBar := bar_index - pivotLen
+    lastLow := pl
+
+ema = ta.ema(close, emaLen)
+upTrend = trendMode == "EMA" ? close >= ema : nz(lastLowBar, 0) > nz(lastHighBar, 0)
+
+// Anchor selection: in an uptrend use the latest low; in a downtrend use the latest high.
+int autoBar = upTrend ? lastLowBar : lastHighBar
+float autoPrice = upTrend ? lastLow : lastHigh
+bool autoIsLow = upTrend
+int manualBar = ta.valuewhen(time >= manualTime, bar_index, 0)
+float selectedPrice = mode == "يدوي" ? (manualPrice > 0 ? manualPrice : ta.valuewhen(time >= manualTime, close, 0)) : autoPrice
+int selectedBar = mode == "يدوي" ? manualBar : autoBar
+bool selectedIsLow = mode == "يدوي" ? manualType == "قاع" : autoIsLow
+
+unit = scaleMode == "ATR" ? ta.atr(atrLen) : manualUnit
+
+// ─── Drawing helpers ───────────────────────────────────────────────────────────
+var line[] drawings = array.new_line()
+var label[] tags = array.new_label()
+var int drawnBar = na
+var float drawnPrice = na
+var bool drawnLow = na
+
+clearDrawings() =>
+    for ln in drawings
+        line.delete(ln)
+    array.clear(drawings)
+    for lb in tags
+        label.delete(lb)
+    array.clear(tags)
+
+addLine(int x1, float y1, int x2, float y2, color c, string txt) =>
+    ln = line.new(x1, y1, x2, y2, xloc = xloc.bar_index, extend = extend.none, color = c, width = lineWidth)
+    array.push(drawings, ln)
+    if showLabels
+        lb = label.new(x2, y2, txt, xloc = xloc.bar_index, style = label.style_label_left, textcolor = color.white, color = color.new(c, 15), size = size.small)
+        array.push(tags, lb)
+
+// Rebuild only when the selected anchor changes, and once on the current bar.
+anchorChanged = not na(selectedBar) and (selectedBar != drawnBar or selectedPrice != drawnPrice or selectedIsLow != drawnLow)
+if anchorChanged
+    clearDrawings()
+    drawnBar := selectedBar
+    drawnPrice := selectedPrice
+    drawnLow := selectedIsLow
+
+    int x2 = selectedBar + barsForward
+    float sign = selectedIsLow ? 1.0 : -1.0
+    float u = unit
+
+    // Price/time angles.  1x1 is one price unit per bar; other ratios are explicit.
+    if showAngles
+        addLine(selectedBar, selectedPrice, x2, selectedPrice + sign * u * barsForward, color.orange, "1x1")
+        addLine(selectedBar, selectedPrice, x2, selectedPrice + sign * u * barsForward * 2.0, color.red, "2x1")
+        addLine(selectedBar, selectedPrice, x2, selectedPrice + sign * u * barsForward * 0.5, color.lime, "1x2")
+        addLine(selectedBar, selectedPrice, x2, selectedPrice + sign * u * barsForward * 3.0, color.fuchsia, "3x1")
+        addLine(selectedBar, selectedPrice, x2, selectedPrice + sign * u * barsForward / 3.0, color.aqua, "1x3")
+
+    // Gann fan: same ratios, labelled for easy reading.
+    if showFan
+        addLine(selectedBar, selectedPrice, x2, selectedPrice + sign * u * barsForward * 4.0, color.new(color.red, 20), "Fan 4x1")
+        addLine(selectedBar, selectedPrice, x2, selectedPrice + sign * u * barsForward / 4.0, color.new(color.green, 10), "Fan 1x4")
+
+    // Gann star: symmetrical rays around the horizontal time axis.
+    if showStar
+        addLine(selectedBar, selectedPrice, x2, selectedPrice, color.gray, "Star 0x1")
+        addLine(selectedBar, selectedPrice, x2, selectedPrice - sign * u * barsForward, color.blue, "Star -1x1")
+        addLine(selectedBar, selectedPrice, x2, selectedPrice - sign * u * barsForward * 2.0, color.purple, "Star -2x1")
+
+    anchorText = selectedIsLow ? "Gann Low / قاع" : "Gann High / قمة"
+    if showLabels
+        anchorLabel = label.new(selectedBar, selectedPrice, anchorText, xloc = xloc.bar_index, style = label.style_label_up, textcolor = color.white, color = color.new(color.black, 0), size = size.normal)
+        array.push(tags, anchorLabel)
+
+// Keep the latest anchor visible even if it is found on the current bar.
+plot(ema, "EMA trend", color = color.new(color.yellow, 35), display = mode == "تلقائي" ? display.pane : display.none)
