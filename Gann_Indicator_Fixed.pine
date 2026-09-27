@@ -1,0 +1,64 @@
+//@version=6
+indicator("Gann Fan + Levels + Angles", shorttitle="Gann", overlay=true, max_labels_count=500)
+
+lookback = input.int(80, "Lookback للـ Pivot", minval=10)
+pivotMode = input.string("Last Swing High", options=["Last Swing High", "Last Swing Low"], title="نوع المؤشر")
+showLevels = input.bool(true, "إظهار مستويات Gann")
+showLabels = input.bool(true, "إظهار التسميات")
+extendBars = input.int(250, "طول امتداد الخطوط", minval=50, maxval=500)
+
+show1x1 = input.bool(true, "1x1")
+show1x2 = input.bool(true, "1x2")
+show2x1 = input.bool(true, "2x1")
+show3x1 = input.bool(true, "3x1")
+show4x1 = input.bool(true, "4x1")
+
+highBarsAgo = ta.highestbars(high, lookback)
+lowBarsAgo = ta.lowestbars(low, lookback)
+
+pivotBar = pivotMode == "Last Swing High" ? bar_index - highBarsAgo : bar_index - lowBarsAgo
+pivotPrice = pivotMode == "Last Swing High" ? high[highBarsAgo] : low[lowBarsAgo]
+
+// دالة رسم خط الزاوية
+f_makeAngleLine(colorIn, rate, direction, labelText) =>
+    line.new(pivotBar, pivotPrice, pivotBar + extendBars, pivotPrice + direction * rate * extendBars * 0.16, xloc=xloc.bar_index, color=colorIn, extend=extend.right, width=1)
+    if showLabels
+        label.new(pivotBar + extendBars, pivotPrice + direction * rate * extendBars * 0.16, text=labelText, xloc=xloc.bar_index, color=color.new(colorIn, 0), textcolor=color.white, style=label.style_label_down, size=size.tiny)
+
+// رسم الزوايا الأساسية
+if show1x1
+    f_makeAngleLine(color.new(color.lime, 0), 1.0, 1, "1x1")
+    f_makeAngleLine(color.new(color.red, 0), 1.0, -1, "1x1 Down")
+
+if show1x2
+    f_makeAngleLine(color.new(color.orange, 0), 0.5, 1, "1x2")
+    f_makeAngleLine(color.new(color.maroon, 0), 0.5, -1, "1x2 Down")
+
+if show2x1
+    f_makeAngleLine(color.new(color.blue, 0), 2.0, 1, "2x1")
+    f_makeAngleLine(color.new(color.navy, 0), 2.0, -1, "2x1 Down")
+
+if show3x1
+    f_makeAngleLine(color.new(color.fuchsia, 0), 3.0, 1, "3x1")
+    f_makeAngleLine(color.new(color.purple, 0), 3.0, -1, "3x1 Down")
+
+if show4x1
+    f_makeAngleLine(color.new(color.teal, 0), 4.0, 1, "4x1")
+    f_makeAngleLine(color.new(color.gray, 0), 4.0, -1, "4x1 Down")
+
+// مستويات Gann السعرية
+if showLevels
+    ratios = array.from(0.382, 0.5, 0.618, 1.0, 1.272, 1.618, 2.0, 2.618, 3.0, 3.618, 4.0)
+    for i = 0 to array.size(ratios) - 1
+        ratio = array.get(ratios, i)
+        levelPrice = pivotPrice * ratio
+        line.new(pivotBar, levelPrice, bar_index + extendBars, levelPrice, xloc=xloc.bar_index, color=color.new(color.gray, 0), extend=extend.right, width=1)
+        if showLabels
+            label.new(bar_index + extendBars, levelPrice, text=str.tostring(ratio, format.percent_scale), xloc=xloc.bar_index, color=color.new(color.gray, 0), textcolor=color.white, style=label.style_none, size=size.tiny)
+
+// رسم نقطة المرجع (Pivot)
+pivotShape = pivotMode == "Last Swing High" ? shape.triangleup : shape.triangledown
+pivotColor = pivotMode == "Last Swing High" ? color.new(color.lime, 0) : color.new(color.red, 0)
+pivotLoc = pivotMode == "Last Swing High" ? location.belowbar : location.abovebar
+
+plotshape(true, title="Pivot Point", style=pivotShape, location=pivotLoc, color=pivotColor, size=size.small)
